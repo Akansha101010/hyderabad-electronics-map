@@ -4,15 +4,29 @@
 <meta charset="utf-8" />
 <title>Hyderabad Electronics Interactive Map</title>
 
-<!-- Leaflet CSS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
 <style>
 body { margin:0; font-family: Arial, sans-serif; }
-#map { height: 90vh; }
+#map { height: 88vh; }
+
 .controls {
-    padding: 10px;
+    padding: 12px;
     background: white;
+    font-size:14px;
+}
+
+.legend {
+    margin-top:10px;
+    font-size:13px;
+    line-height: 1.6;
+}
+
+.legend span {
+    display:inline-block;
+    width:14px;
+    height:14px;
+    margin-right:6px;
 }
 </style>
 </head>
@@ -20,6 +34,8 @@ body { margin:0; font-family: Arial, sans-serif; }
 <body>
 
 <div class="controls">
+    <b>Filters</b><br><br>
+
     Rating:
     <select id="ratingFilter">
         <option value="all">All</option>
@@ -44,17 +60,21 @@ body { margin:0; font-family: Arial, sans-serif; }
     <button onclick="updateMarkers()">GO</button>
 
     <span id="resultCount" style="margin-left:15px;font-weight:bold;"></span>
+
+    <div class="legend">
+        <b>Cluster Legend</b><br>
+        <span style="background:rgba(255,204,0,0.8)"></span>1–100 (Yellow)<br>
+        <span style="background:rgba(0,150,0,0.8)"></span>100–500 (Green)<br>
+        <span style="background:rgba(255,0,150,0.8)"></span>500–1000 (Pink)<br>
+        <span style="background:rgba(255,120,0,0.9)"></span>1000+ (Orange)
+    </div>
 </div>
 
 <div id="map"></div>
 
-<!-- 1️⃣ Load Leaflet FIRST -->
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-
-<!-- 2️⃣ Load Supercluster -->
 <script src="https://unpkg.com/supercluster@7.1.4/dist/supercluster.min.js"></script>
 
-<!-- 3️⃣ Your Custom Script -->
 <script>
 
 // ---------------- MAP INIT ----------------
@@ -76,10 +96,29 @@ fetch("hyderabad_electronics.json")
     allData = data;
     buildClusters(allData);
     updateMarkers();
-})
-.catch(error => {
-    console.error("Error loading JSON:", error);
 });
+
+// ---------------- COLOR LOGIC ----------------
+function getClusterColor(count) {
+
+    if (count <= 100) {
+        let intensity = count / 100;
+        return `rgba(255,204,0,${0.4 + intensity * 0.6})`;
+    }
+
+    if (count <= 500) {
+        let intensity = (count - 100) / 400;
+        return `rgba(0,150,0,${0.4 + intensity * 0.6})`;
+    }
+
+    if (count <= 1000) {
+        let intensity = (count - 500) / 500;
+        return `rgba(255,0,150,${0.4 + intensity * 0.6})`;
+    }
+
+    let intensity = Math.min((count - 1000) / 3000, 1);
+    return `rgba(255,120,0,${0.5 + intensity * 0.5})`;
+}
 
 // ---------------- BUILD CLUSTERS ----------------
 function buildClusters(data) {
@@ -93,12 +132,12 @@ function buildClusters(data) {
         },
         geometry: {
             type: "Point",
-            coordinates: [store.lng, store.lat] // GeoJSON = [lng, lat]
+            coordinates: [store.lng, store.lat]
         }
     }));
 
     clusterIndex = new Supercluster({
-        radius: 150,   // Increase for larger grouping
+        radius: 150,
         maxZoom: 16
     });
 
@@ -127,7 +166,7 @@ function updateMarkers() {
 
     const clusters = clusterIndex.getClusters(bbox, zoom);
 
-    let count = 0;
+    let countVisible = 0;
 
     clusters.forEach(cluster => {
 
@@ -135,14 +174,17 @@ function updateMarkers() {
 
         if (cluster.properties.cluster) {
 
+            let count = cluster.properties.point_count;
+            let color = getClusterColor(count);
+
             L.circleMarker([lat, lng], {
-                radius: 25,
-                fillColor: "#ff7800",
-                fillOpacity: 0.6,
-                color: "#000",
+                radius: 18 + Math.log(count) * 4,
+                fillColor: color,
+                fillOpacity: 0.85,
+                color: "#333",
                 weight: 1
             })
-            .bindPopup("Cluster: " + cluster.properties.point_count + " stores")
+            .bindPopup("Cluster: " + count + " stores")
             .addTo(markersLayer);
 
         } else {
@@ -160,38 +202,28 @@ function updateMarkers() {
                 )
                 .addTo(markersLayer);
 
-            count++;
+            countVisible++;
         }
     });
 
     document.getElementById("resultCount").innerText =
-        "Showing: " + count + " stores";
+        "Showing: " + countVisible + " stores";
 }
 
 // ---------------- FILTER FUNCTIONS ----------------
 function ratingPass(rating, filter) {
     if (filter === "all") return true;
-
     var parts = filter.split("-");
-    var min = parseFloat(parts[0]);
-    var max = parseFloat(parts[1]);
-
-    return rating > min && rating <= max;
+    return rating > parseFloat(parts[0]) && rating <= parseFloat(parts[1]);
 }
 
 function reviewPass(reviews, filter) {
     if (filter === "all") return true;
-
     if (filter === "5000+") return reviews > 5000;
-
     var parts = filter.split("-");
-    var min = parseInt(parts[0]);
-    var max = parseInt(parts[1]);
-
-    return reviews > min && reviews <= max;
+    return reviews > parseInt(parts[0]) && reviews <= parseInt(parts[1]);
 }
 
-// Auto-update on zoom/pan
 map.on("moveend", updateMarkers);
 
 </script>
