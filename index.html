@@ -1,53 +1,3 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8" />
-<title>Hyderabad Electronics Interactive Map</title>
-
-<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
-
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
-
-<style>
-#map { height: 90vh; }
-.controls { padding: 10px; background: white; }
-</style>
-</head>
-
-<body>
-
-<div class="controls">
-    Rating:
-    <select id="ratingFilter">
-        <option value="all">All</option>
-        <option value="0-1">0–1</option>
-        <option value="1-2">1–2</option>
-        <option value="2-3">2–3</option>
-        <option value="3-4">3–4</option>
-        <option value="4-5">4–5</option>
-    </select>
-
-    Reviews:
-    <select id="reviewFilter">
-        <option value="all">All</option>
-        <option value="0-10"><10</option>
-        <option value="10-100">10–100</option>
-        <option value="100-500">100–500</option>
-        <option value="500-1000">500–1000</option>
-        <option value="1000-5000">1000–5000</option>
-        <option value="5000+">5000+</option>
-    </select>
-
-    <button onclick="updateMarkers()">GO</button>
-
-    <span id="resultCount" style="margin-left:15px;font-weight:bold;"></span>
-</div>
-
-<div id="map"></div>
-
 <script>
 
 var map = L.map('map').setView([17.3850, 78.4867], 11);
@@ -56,53 +6,103 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors'
 }).addTo(map);
 
-var markers = L.markerClusterGroup();
 var allData = [];
+var clusterIndex;
+var markersLayer = L.layerGroup().addTo(map);
 
-// Load JSON
 fetch("hyderabad_electronics.json")
 .then(response => response.json())
 .then(data => {
     allData = data;
-    updateMarkers();  // initial load
+    buildClusters(allData);
+    updateMarkers();
 });
+
+function buildClusters(data) {
+
+    const geojson = data.map(store => ({
+        type: "Feature",
+        properties: {
+            name: store.name,
+            rating: parseFloat(store.rating) || 0,
+            reviews: parseInt(store.reviews) || 0
+        },
+        geometry: {
+            type: "Point",
+            coordinates: [store.lng, store.lat]
+        }
+    }));
+
+    clusterIndex = new Supercluster({
+        radius: 150,   // increase for larger ~1km style grouping
+        maxZoom: 16
+    });
+
+    clusterIndex.load(geojson);
+}
 
 function updateMarkers() {
 
-    markers.clearLayers();
+    markersLayer.clearLayers();
 
     var ratingFilter = document.getElementById("ratingFilter").value;
     var reviewFilter = document.getElementById("reviewFilter").value;
 
-    var count = 0;
+    const bounds = map.getBounds();
+    const zoom = map.getZoom();
 
-    allData.forEach(store => {
+    const bbox = [
+        bounds.getWest(),
+        bounds.getSouth(),
+        bounds.getEast(),
+        bounds.getNorth()
+    ];
 
-        var rating = parseFloat(store.rating) || 0;
-        var reviews = parseInt(store.reviews) || 0;
+    const clusters = clusterIndex.getClusters(bbox, zoom);
 
-        if (!ratingPass(rating, ratingFilter)) return;
-        if (!reviewPass(reviews, reviewFilter)) return;
+    let count = 0;
 
-        var marker = L.marker([store.lat, store.lng])
-            .bindPopup(
-                "<b>" + store.name + "</b><br>" +
-                "Rating: " + rating + "<br>" +
-                "Reviews: " + reviews
-            );
+    clusters.forEach(cluster => {
 
-        markers.addLayer(marker);
-        count++;
+        const [lng, lat] = cluster.geometry.coordinates;
+
+        if (cluster.properties.cluster) {
+
+            L.circleMarker([lat, lng], {
+                radius: 25,
+                fillColor: "#ff7800",
+                fillOpacity: 0.6,
+                color: "#000",
+                weight: 1
+            })
+            .bindPopup("Cluster: " + cluster.properties.point_count + " stores")
+            .addTo(markersLayer);
+
+        } else {
+
+            const store = cluster.properties;
+
+            if (!ratingPass(store.rating, ratingFilter)) return;
+            if (!reviewPass(store.reviews, reviewFilter)) return;
+
+            L.marker([lat, lng])
+                .bindPopup(
+                    "<b>" + store.name + "</b><br>" +
+                    "Rating: " + store.rating + "<br>" +
+                    "Reviews: " + store.reviews
+                )
+                .addTo(markersLayer);
+
+            count++;
+        }
     });
-
-    map.addLayer(markers);
 
     document.getElementById("resultCount").innerText =
         "Showing: " + count + " stores";
 }
 
 function ratingPass(rating, filter) {
- if (filter === "all") return true;
+    if (filter === "all") return true;
 
     var parts = filter.split("-");
     var min = parseFloat(parts[0]);
@@ -122,8 +122,7 @@ function reviewPass(reviews, filter) {
 
     return reviews > min && reviews <= max;
 }
+
+map.on("moveend", updateMarkers);
+
 </script>
-
-</body>
-</html>
-
