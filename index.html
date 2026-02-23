@@ -84,7 +84,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors'
 }).addTo(map);
 
-// ---------------- GLOBAL VARIABLES ----------------
+// ---------------- GLOBALS ----------------
 var allData = [];
 var clusterIndex;
 var markersLayer = L.layerGroup().addTo(map);
@@ -94,30 +94,26 @@ fetch("hyderabad_electronics.json")
 .then(response => response.json())
 .then(data => {
     allData = data;
-    buildClusters(allData);
-    updateMarkers();
+    applyFiltersAndBuild();
 });
 
-// ---------------- COLOR LOGIC ----------------
-function getClusterColor(count) {
+// ---------------- MAIN FILTER PIPELINE ----------------
+function applyFiltersAndBuild() {
 
-    if (count <= 100) {
-        let intensity = count / 100;
-        return `rgba(255,204,0,${0.4 + intensity * 0.6})`;
-    }
+    var ratingFilter = document.getElementById("ratingFilter").value;
+    var reviewFilter = document.getElementById("reviewFilter").value;
 
-    if (count <= 500) {
-        let intensity = (count - 100) / 400;
-        return `rgba(0,150,0,${0.4 + intensity * 0.6})`;
-    }
+    // 🔥 FILTER FIRST
+    const filteredData = allData.filter(store => {
+        return ratingPass(store.rating, ratingFilter) &&
+               reviewPass(store.reviews, reviewFilter);
+    });
 
-    if (count <= 1000) {
-        let intensity = (count - 500) / 500;
-        return `rgba(255,0,150,${0.4 + intensity * 0.6})`;
-    }
+    document.getElementById("resultCount").innerText =
+        "Showing: " + filteredData.length + " stores";
 
-    let intensity = Math.min((count - 1000) / 3000, 1);
-    return `rgba(255,120,0,${0.5 + intensity * 0.5})`;
+    buildClusters(filteredData);
+    updateMarkers();
 }
 
 // ---------------- BUILD CLUSTERS ----------------
@@ -151,9 +147,6 @@ function updateMarkers() {
 
     markersLayer.clearLayers();
 
-    var ratingFilter = document.getElementById("ratingFilter").value;
-    var reviewFilter = document.getElementById("reviewFilter").value;
-
     const bounds = map.getBounds();
     const zoom = map.getZoom();
 
@@ -165,8 +158,6 @@ function updateMarkers() {
     ];
 
     const clusters = clusterIndex.getClusters(bbox, zoom);
-
-    let countVisible = 0;
 
     clusters.forEach(cluster => {
 
@@ -191,9 +182,6 @@ function updateMarkers() {
 
             const store = cluster.properties;
 
-            if (!ratingPass(store.rating, ratingFilter)) return;
-            if (!reviewPass(store.reviews, reviewFilter)) return;
-
             L.marker([lat, lng])
                 .bindPopup(
                     "<b>" + store.name + "</b><br>" +
@@ -201,29 +189,48 @@ function updateMarkers() {
                     "Reviews: " + store.reviews
                 )
                 .addTo(markersLayer);
-
-            countVisible++;
         }
     });
-
-    document.getElementById("resultCount").innerText =
-        "Showing: " + countVisible + " stores";
 }
 
 // ---------------- FILTER FUNCTIONS ----------------
 function ratingPass(rating, filter) {
     if (filter === "all") return true;
     var parts = filter.split("-");
-    return rating > parseFloat(parts[0]) && rating <= parseFloat(parts[1]);
+    return parseFloat(rating) > parseFloat(parts[0]) &&
+           parseFloat(rating) <= parseFloat(parts[1]);
 }
 
 function reviewPass(reviews, filter) {
     if (filter === "all") return true;
     if (filter === "5000+") return reviews > 5000;
     var parts = filter.split("-");
-    return reviews > parseInt(parts[0]) && reviews <= parseInt(parts[1]);
+    return parseInt(reviews) > parseInt(parts[0]) &&
+           parseInt(reviews) <= parseInt(parts[1]);
 }
 
+// ---------------- CLUSTER COLOR ----------------
+function getClusterColor(count) {
+
+    if (count <= 100) {
+        return "rgba(255,204,0,0.8)";
+    }
+
+    if (count <= 500) {
+        return "rgba(0,150,0,0.8)";
+    }
+
+    if (count <= 1000) {
+        return "rgba(255,0,150,0.8)";
+    }
+
+    return "rgba(255,120,0,0.9)";
+}
+
+// Re-cluster when GO clicked
+document.querySelector("button").addEventListener("click", applyFiltersAndBuild);
+
+// Auto-update on pan/zoom
 map.on("moveend", updateMarkers);
 
 </script>
