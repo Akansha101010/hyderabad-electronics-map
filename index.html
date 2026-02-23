@@ -1,23 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Hyderabad Electronics Interactive Map</title>
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+<style>
+body { margin:0; font-family: Arial, sans-serif; }
+#map { height: 90vh; }
+.controls {
+    padding: 10px;
+    background: white;
+}
+</style>
+</head>
+
+<body>
+
+<div class="controls">
+    Rating:
+    <select id="ratingFilter">
+        <option value="all">All</option>
+        <option value="0-1">0–1</option>
+        <option value="1-2">1–2</option>
+        <option value="2-3">2–3</option>
+        <option value="3-4">3–4</option>
+        <option value="4-5">4–5</option>
+    </select>
+
+    Reviews:
+    <select id="reviewFilter">
+        <option value="all">All</option>
+        <option value="0-10">0–10</option>
+        <option value="10-100">10–100</option>
+        <option value="100-500">100–500</option>
+        <option value="500-1000">500–1000</option>
+        <option value="1000-5000">1000–5000</option>
+        <option value="5000+">5000+</option>
+    </select>
+
+    <button onclick="updateMarkers()">GO</button>
+
+    <span id="resultCount" style="margin-left:15px;font-weight:bold;"></span>
+</div>
+
+<div id="map"></div>
+
+<!-- 1️⃣ Load Leaflet FIRST -->
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<!-- 2️⃣ Load Supercluster -->
+<script src="https://unpkg.com/supercluster@7.1.4/dist/supercluster.min.js"></script>
+
+<!-- 3️⃣ Your Custom Script -->
 <script>
 
+// ---------------- MAP INIT ----------------
 var map = L.map('map').setView([17.3850, 78.4867], 11);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors'
 }).addTo(map);
 
+// ---------------- GLOBAL VARIABLES ----------------
 var allData = [];
 var clusterIndex;
 var markersLayer = L.layerGroup().addTo(map);
 
+// ---------------- LOAD DATA ----------------
 fetch("hyderabad_electronics.json")
 .then(response => response.json())
 .then(data => {
     allData = data;
     buildClusters(allData);
     updateMarkers();
+})
+.catch(error => {
+    console.error("Error loading JSON:", error);
 });
 
+// ---------------- BUILD CLUSTERS ----------------
 function buildClusters(data) {
 
     const geojson = data.map(store => ({
@@ -29,19 +93,22 @@ function buildClusters(data) {
         },
         geometry: {
             type: "Point",
-            coordinates: [store.lng, store.lat]
+            coordinates: [store.lng, store.lat] // GeoJSON = [lng, lat]
         }
     }));
 
     clusterIndex = new Supercluster({
-        radius: 150,   // increase for larger ~1km style grouping
+        radius: 150,   // Increase for larger grouping
         maxZoom: 16
     });
 
     clusterIndex.load(geojson);
 }
 
+// ---------------- UPDATE MARKERS ----------------
 function updateMarkers() {
+
+    if (!clusterIndex) return;
 
     markersLayer.clearLayers();
 
@@ -101,6 +168,7 @@ function updateMarkers() {
         "Showing: " + count + " stores";
 }
 
+// ---------------- FILTER FUNCTIONS ----------------
 function ratingPass(rating, filter) {
     if (filter === "all") return true;
 
@@ -123,6 +191,10 @@ function reviewPass(reviews, filter) {
     return reviews > min && reviews <= max;
 }
 
+// Auto-update on zoom/pan
 map.on("moveend", updateMarkers);
 
 </script>
+
+</body>
+</html>
